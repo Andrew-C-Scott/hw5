@@ -1,0 +1,96 @@
+version: '3.8'
+services:
+  database:
+    image: postgres:13-alpine
+    container_name: database
+    ports:
+      - "8432:5432"
+    environment:
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres
+      - POSTGRES_DB=school
+    volumes:
+      - ./00-init.sql:/docker-entrypoint-initdb.d/00-init.sql
+      - ./01-data.sql:/docker-entrypoint-initdb.d/01-data.sql
+
+  discovery-service:
+    image: scottandrew0814/discovery-service:hw3
+    container_name: discovery-service
+    ports:
+      - "8070:8070"
+
+  student-service:
+    image: scottandrew0814/student-service:hw3
+    container_name: student-service
+    depends_on:
+      - database
+      - discovery-service
+      - kafkaserver
+    ports:
+      - "8080:8080"
+    environment:
+      - SPRING_DATASOURCE_URL=jdbc:postgresql://database:5432/school
+      - SPRING_DATASOURCE_USERNAME=postgres
+      - SPRING_DATASOURCE_PASSWORD=postgres
+
+  course-service:
+    image: scottandrew0814/course-service:hw3
+    container_name: course-service
+    depends_on:
+      - database
+      - discovery-service
+      - kafkaserver
+    ports:
+      - "8081:8081"
+    environment:
+      - SPRING_DATASOURCE_URL=jdbc:postgresql://database:5432/school
+      - SPRING_DATASOURCE_USERNAME=postgres
+      - SPRING_DATASOURCE_PASSWORD=postgres
+
+  instructor-service:
+    image: scottandrew0814/instructor-service:hw3
+    container_name: instructor-service
+    depends_on:
+      - database
+      - discovery-service
+      - kafkaserver
+    ports:
+      - "8082:8082"
+    environment:
+      - SPRING_DATASOURCE_URL=jdbc:postgresql://database:5432/school
+      - SPRING_DATASOURCE_USERNAME=postgres
+      - SPRING_DATASOURCE_PASSWORD=postgres
+      - "eureka.client.service-url.defaultZone=http://discovery-service:8070/eureka/"
+
+  zookeeper:
+    image: bitnami/zookeeper:latest
+    environment:
+      - ALLOW_ANONYMOUS_LOGIN=yes
+
+  kafkaserver:
+    image: bitnami/kafka:latest
+    environment:
+      # run as a broker under ZK
+      - KAFKA_CFG_PROCESS_ROLES=broker
+      # point at your ZK
+      - KAFKA_CFG_ZOOKEEPER_CONNECT=zookeeper:2181
+      # your one client listener
+      - KAFKA_CFG_LISTENERS=PLAINTEXT://:9092
+      - KAFKA_CFG_ADVERTISED_LISTENERS=PLAINTEXT://localhost:9092
+    ports:
+      - "9092:9092"
+    depends_on:
+      - zookeeper
+
+  gateway-service:
+    image: scottandrew0814/gateway-service:hw3
+    container_name: gateway-service
+    depends_on:
+      - discovery-service
+      - student-service
+      - course-service
+      - instructor-service
+    ports:
+      - "8072:8072"
+    environment:
+      - "eureka.client.service-url.defaultZone=http://discovery-service:8070/eureka/"
